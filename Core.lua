@@ -312,89 +312,89 @@ end
 --           Potential for taint here - consider another way?
 -- --------------------------------------------------------------------------
 
-local function blackListButton(self)
-    local button = self.value;
-    if ( button == "AddToPBL" ) then
-        local dropdownFrame = UIDROPDOWNMENU_INIT_MENU
-        local unit = dropdownFrame.unit
-        local name = dropdownFrame.name
-        local server = dropdownFrame.server
-        local className,classFile,classID
-        local note = "Added from unitframe."
-        if unit then
-            className,classFile,classID = UnitClass(unit)
-        -- elseif self.owner == "FRIEND" then
-        --     if name == nil or name == "" or server == nil or server == "" then
-        --         PBL:Print("cant read name or realm")
-        --         return
-        --     else
-        --         --HOW TO RETRIEVE CLASS ON CHAT???????
-        --         PBL:addtolist(name,server,"UNSPECIFIED",0,0)
-        --         return
-        --     end
-        end
-        if server==nil then
-            local realm = GetRealmName()
-            server=realm:gsub(" ","")
-        end
-        local fullname = name.."-"..server
-        if (fullname ~= nil and fullname ~= "") or (name ~= nil and name ~= "" and server ~= nil and server ~= "" and self.owner == "FRIEND") then
-            local exist, i = isbanned(PBL.db.global.blackList, fullname)
-            if not classFile then
-                classFile = "UNSPECIFIED"
+function PBL_UnitMenuPlayer (owner, root, contextData)
+	local name, server = UnitName(contextData.unit)
+    local guid = UnitGUID(contextData.unit)
+
+    if server == nil or server == "" then
+		server = Proper(GetRealmName())
+	end
+
+	local fullname = name .. "-" .. server
+
+	fullname = Proper(fullname, true)
+
+    local exist, i = isbanned(PBL.db.global.blackList, fullname)
+    local text = "|cffff0000Add to PBL"
+
+    if exist then
+        text = "|cff008000Remove from PBL"
+    end
+
+	root:CreateDivider()
+	root:CreateButton(text,
+		function(owner, root, contextData)
+            local _, className, _ = C_PlayerInfo.GetClass({guid = guid})
+
+            if not className then
+                className = "UNSPECIFIED"
             end
             if exist then
                 PBL:rmvfromlist(fullname, i)
             else
-                PBL:addtolist(name,server,classFile,1,1,note)
+                PBL:addtolist(name, server, className, 1, 1, "Added from unitframe.")
             end
             PBL:refreshWidgetCore()
-        end
-    end
+		end
+    )
 end
 
---local PopUpMenu = CreateFrame("Frame","PopUpMenuFrame")
---PopUpMenu:SetScript("OnEvent", function() hooksecurefunc("UnitPopup_OnClick", blackListButton) end)
---PopUpMenu:RegisterEvent("PLAYER_LOGIN")
---local PopupUnits = {}
---UnitPopupButtons["AddToPBL"] = { text = "Add/Remove to PBL", }
---local i, j, UPMenus
---for i,UPMenus in pairs(UnitPopupMenus) do
---    for j=1, #UPMenus do
---        if UPMenus[j] == "INSPECT" then
---            PopupUnits[#PopupUnits + 1] = i
---            pos = j + 1
---            table.insert( UnitPopupMenus[i] ,pos , "AddToPBL" )
---            break
---        end
---    end
---end
+Menu.ModifyMenu("MENU_UNIT_ENEMY_PLAYER", PBL_UnitMenuPlayer)
+Menu.ModifyMenu("MENU_UNIT_PLAYER", PBL_UnitMenuPlayer)
+Menu.ModifyMenu("MENU_UNIT_PARTY", PBL_UnitMenuPlayer)
+Menu.ModifyMenu("MENU_UNIT_RAID_PLAYER", PBL_UnitMenuPlayer)
 
-local TestDropdownMenuList = {"PLAYER","RAID_PLAYER","PARTY","FRIEND",}
+-- From GIL (https://www.curseforge.com/wow/addons/global-ignore-list)
+function Proper (name, okSpaces)
 
-function Assignfunchook(dropdownMenu, which, unit, name, userData, ...)
-    if UIDROPDOWNMENU_MENU_LEVEL > 1 then
-        return
-    end
-    if not has_value(TestDropdownMenuList,which) then
-        return
-    end
-    local selfname = UnitName("player")
-    local realm = GetRealmName()
-    if which == "FRIEND" and name == selfname.."-"..realm then
-        return
-    end
-    local info = UIDropDownMenu_CreateInfo()
-    info.text = "Add/Remove to PBL"
-    info.owner = which
-    info.notCheckable = 1
-    info.func = blackListButton
-    info.colorCode = "|cffff0000"
-    info.value = "AddToPBL"
-    UIDropDownMenu_AddButton(info)
+	if name == nil then return nil end
+	if name == "" then return nil end
+	
+	local len    = strlen(name)
+	local count  = 1
+	local res    = ""
+	local needUp = true
+	local gotOP  = false
+	local c
+	local char   = string.char
+	local upper  = string.upper
+	local lower  = string.lower
+	local sb     = strbyte
+	
+	while count <= len do
+		c = sb(name, count)
+				
+		if c < 32 or c > 126 then
+			res    = res .. char(c)
+			needUp = false
+		else
+			if c ~= 32 or okSpaces == true then
+				if needUp then
+					res = res .. upper(char(c))
+				else
+					res = res .. lower(char(c))
+				end
+			
+				gotOP  = (c == 40 or gotOP) and (c ~= 41)
+				needUp = (c == 32 or c == 45 or gotOP == true)
+			end
+		end
+		
+		count  = count + 1
+	end
+	
+	return res
 end
-
-hooksecurefunc("UnitPopup_ShowMenu", Assignfunchook)
 
 -- --------------------------------------------------------------------------
 -- DEPRECATED: Unit Tooltips
@@ -442,7 +442,7 @@ local function OnTooltipSetUnit(tooltip, data)
             realm=GetRealmName()
             realm=realm:gsub(" ","");
         end
-        fullname = name .. "-" .. realm;
+        local fullname = name .. "-" .. realm;
 
         local banned, idx = isbanned(PBL.db.global.blackList,fullname)
         local p = PBL.db.global.blackList[idx]
@@ -534,7 +534,7 @@ function PBL:gru_eventhandler()
         return
     elseif self.db.profile.ShowAlert["count"] > latestGroupMembers then
         self.db.profile.ShowAlert["count"] = latestGroupMembers
-        local name,realm="";
+        local name, realm = "", "";
         self.db.profile.ShowAlert["onparty"] = {}
         for l=1, latestGroupMembers do
             if latestGroupMembers < 6 then
@@ -561,7 +561,7 @@ function PBL:gru_eventhandler()
     end
 
     local pjs = {};
-    local name,realm="";
+    local name, realm= "", "";
     local i
     for i=1, latestGroupMembers do
         if latestGroupMembers < 6 then
@@ -581,7 +581,7 @@ function PBL:gru_eventhandler()
                         table.insert(self.db.profile.ShowAlert["onparty"], fullname)
                         aux = true
                     end
-                    pjs[table.getn(pjs) + 1] = fullname
+                    pjs[#pjs + 1] = fullname
                     self.db.profile.ShowAlert["count"] = latestGroupMembers
                 end
             end
@@ -589,12 +589,12 @@ function PBL:gru_eventhandler()
     end
 
     if self.db.profile.ShowAlert["LeaveAlert"] == false and aux == true then
-        if table.getn(pjs) ~= 0 then
+        if #pjs ~= 0 then
             local text = "", j
-            for j=1, table.getn(pjs) do
+            for j=1, #pjs do
                 text = text..pjs[j].."\n"
             end
-            if table.getn(pjs) > 1 then
+            if #pjs > 1 then
                 text = text..L["confirmMultipleTxt"]
             else
                 text = text..L["confirmSingleTxt"]
